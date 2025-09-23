@@ -8,6 +8,7 @@
 //geometry with millions of vertices.
 
 uniform int u_Time;       // Time
+uniform float u_Lunaricity;
 
 uniform mat4 u_Model;       // The matrix that defines the transformation of the
                             // object we're rendering. In this assignment,
@@ -31,6 +32,7 @@ out vec4 fs_Nor;            // The array of normals that has been transformed by
 out vec4 fs_LightVec;       // The direction in which our virtual light lies, relative to each vertex. This is implicitly passed to the fragment shader.
 out vec4 fs_Col;            // The color of each vertex. This is implicitly passed to the fragment shader.
 out vec4 fs_Pos;
+out float fs_Time;
 
 const vec4 lightPos = vec4(5, 5, 3, 1); //The position of our virtual light, which is used to compute the shading of
                                         //the geometry in the fragment shader.
@@ -121,7 +123,8 @@ float gain(float g, float t) {
 
 void main()
 {
-    fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation
+    fs_Col = vs_Col;                        // Pass the vertex colors to the fragment shader for interpolation
+    fs_Time = float(u_Time);
 
     mat3 invTranspose = mat3(u_ModelInvTr);
     fs_Nor = vec4(invTranspose * vec3(vs_Nor), 0);          // Pass the vertex normals to the fragment shader for interpolation.
@@ -133,7 +136,7 @@ void main()
     // tail along positive y axis
     vec3 newPos = vec3(vs_Pos);
     float heightScaleFluct = 0.08 * sin(float(u_Time) * 0.134) - 0.1 * cos(float(u_Time) * 0.017 + 0.4);
-    newPos.y *= mix(1.0, 2. + heightScaleFluct, clamp(newPos.y, 0.0, 1.0)); 
+    newPos.y *= mix(1.0, 1.9 + heightScaleFluct, clamp(newPos.y, 0.0, 1.0)); 
 
 
     // tail taper
@@ -148,7 +151,7 @@ void main()
     // FBM
     float r = length(newPos);
     vec3 noisePos = vec3(newPos.x * 0.5, newPos.y * 0.5 - float(u_Time) * 0.03, newPos.z * 0.5);
-    float fbm = fbm3D(noisePos, 4, 3., 0.5);
+    float fbm = fbm3D(noisePos, 4, u_Lunaricity, 0.5);
     float fbmAmp = 0.3 * clamp(r * 2., 1.0, 2.0) * fbm;
     newPos += fbmAmp * normalize(newPos);
 

@@ -11,8 +11,11 @@
 // position, light position, and vertex color.
 precision highp float;
 
+in float fs_Time;       // Time
+
 uniform vec4 u_Color; // The color with which to render this instance of geometry.
 uniform vec4 u_Color2;
+uniform float u_ColorSteps;
 
 // These are the interpolated values out of the rasterizer, so you can't know
 // their specific values without knowing the vertices that contributed to them
@@ -24,96 +27,110 @@ in vec4 fs_Pos;
 out vec4 out_Col; // This is the final output color that you will see on your
                   // screen for the pixel that is currently being processed.
 
-vec3 randomVector(vec3 p) {
-    vec3 v = fract(sin(vec3(
-        dot(p, vec3(127.1, 311.7, 74.7)),
-        dot(p, vec3(269.5, 18.3, 246.1)),
+float fade(float t) {
+    // quintic fade
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+vec3 rand3(vec3 p) {
+    vec3 q = vec3(
+        dot(p, vec3(127.1, 311.7,  74.7)),
+        dot(p, vec3(269.5, 183.3, 246.1)),
         dot(p, vec3(113.5, 271.9, 124.6))
-    )) * 4358.5453);
-    return normalize(v);
+    );
+    q = fract(sin(q) * 43758.5453123);
+    // [-1,1]
+    q = q * 2.0 - 1.0;
+    return normalize(q);
 }
 
-float surflet(vec3 P, vec3 gridPoint) {
-    float distX = abs(P.x - gridPoint.x);
-    float distY = abs(P.y - gridPoint.y);
-    float distZ = abs(P.z - gridPoint.z);
+float perlin3D(vec3 P) {
+    vec3 Pi = floor(P);
+    vec3 Pf = P - Pi;
+    vec3 w = vec3(fade(Pf.x), fade(Pf.y), fade(Pf.z));
 
-    float tX = 1.0 - 6.0*pow(distX, 5.0) + 15.0*pow(distX, 4.0) - 10.0*pow(distX, 3.0);
-    float tY = 1.0 - 6.0*pow(distY, 5.0) + 15.0*pow(distY, 4.0) - 10.0*pow(distY, 3.0);
-    float tZ = 1.0 - 6.0*pow(distZ, 5.0) + 15.0*pow(distZ, 4.0) - 10.0*pow(distZ, 3.0);
+    // corner offsets
+    vec3 c000 = vec3(0.0, 0.0, 0.0);
+    vec3 c100 = vec3(1.0, 0.0, 0.0);
+    vec3 c010 = vec3(0.0, 1.0, 0.0);
+    vec3 c110 = vec3(1.0, 1.0, 0.0);
+    vec3 c001 = vec3(0.0, 0.0, 1.0);
+    vec3 c101 = vec3(1.0, 0.0, 1.0);
+    vec3 c011 = vec3(0.0, 1.0, 1.0);
+    vec3 c111 = vec3(1.0, 1.0, 1.0);
 
-    vec3 gradient = randomVector(gridPoint);
-    vec3 diff = P - gridPoint;
+    // gradient vectors
+    float n000 = dot(rand3(Pi + c000), Pf - c000);
+    float n100 = dot(rand3(Pi + c100), Pf - c100);
+    float n010 = dot(rand3(Pi + c010), Pf - c010);
+    float n110 = dot(rand3(Pi + c110), Pf - c110);
+    float n001 = dot(rand3(Pi + c001), Pf - c001);
+    float n101 = dot(rand3(Pi + c101), Pf - c101);
+    float n011 = dot(rand3(Pi + c011), Pf - c011);
+    float n111 = dot(rand3(Pi + c111), Pf - c111);
 
-    float height = dot(diff, gradient);
-    return height * tX * tY * tZ;
+    float nx00 = mix(n000, n100, w.x);
+    float nx10 = mix(n010, n110, w.x);
+    float nx01 = mix(n001, n101, w.x);
+    float nx11 = mix(n011, n111, w.x);
+
+    float nxy0 = mix(nx00, nx10, w.y);
+    float nxy1 = mix(nx01, nx11, w.y);
+
+    float nxyz = mix(nxy0, nxy1, w.z);
+
+    return nxyz * 1.732;
 }
 
-float perlinNoise(vec3 p) {
-    float surfletSum = 0.f;
+float fbm3D(vec3 p, int OCTAVES, float LACUNARITY, float GAIN) {
+    float freq = 1.0;
+    float amp = 1.0;
+    float sum = 0.0;
+    float norm = 0.0;
 
-    for(int dx = 0; dx <= 1; ++dx) {
-        for(int dy = 0; dy <= 1; ++dy) {
-            for(int dz = 0; dz <= 1; ++dz) {
-                surfletSum += surflet(p, floor(p) + vec3(dx, dy, dz));
-            }
-        }
+    for (int i = 0; i < OCTAVES; ++i) {
+        sum += perlin3D(p * freq) * amp;
+        norm += amp;
+        freq *= LACUNARITY;
+        amp *= GAIN;
     }
-    return surfletSum;
+    // [-1,1]
+    return sum / norm;
 }
 
-float fbm(vec3 p) {
-
-    int octaves = 2;
-    float amplitude = 0.5;
-    float frequency = 2.0;
-    float persistence = 0.8f;
-
-    float total = 0.0;
-
-    for (int i = 0; i < octaves; i++) {
-        total += amplitude * perlinNoise(p * frequency);
-
-        frequency *= 1.66;
-        amplitude *= persistence;
-    }
-    return total;
-}
-
-
-float hash11(float p)
-{
-    p = fract(p * .1031);
-    p *= p + 33.33;
-    p *= p + p;
-    return fract(p);
-}
-
-float hash13(vec3 p3)
-{
-	p3  = fract(p3 * .1031);
-    p3 += dot(p3, p3.zyx + 31.32);
-    return fract((p3.x + p3.y) * p3.z);
+float bias(float t, float b) {
+    return pow(t, log(b) / log(0.5));
 }
 
 
 void main()
 {
+    // base color
+    float r = length(fs_Pos.xyz);
+    float t = (clamp(r, 1., 2.2) - 1.) / 1.2;
+    vec3 colLayer1 = mix(u_Color.rgb, u_Color2.rgb, bias(t, 0.7));
 
-    // Calculate the diffuse term for Lambert shading
-    float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));
-    // Avoid negative lighting values
-    // diffuseTerm = clamp(diffuseTerm, 0.0, 1.0);
 
-    //float ambientTerm = 0.1;
+    // fbm
+    vec3 noisePos = vec3(fs_Pos.x * 0.5, fs_Pos.y * 0.5 - fs_Time * 0.03, fs_Pos.z * 0.5);
+    float fbm = fbm3D(noisePos, 4, 2.8, 0.8);
+    float bucketT = floor(clamp(fbm, 0., 1.) * u_ColorSteps) / (u_ColorSteps - 1.);
+    vec3 colLayer2 = mix(u_Color.rgb, u_Color2.rgb, bucketT);
 
-    //float lightIntensity = diffuseTerm + ambientTerm;   //Add a small float value to the color multiplier
-                                                        //to simulate ambient lighting. This ensures that faces that are not
-                                                        //lit by our point light are not completely black.
+    //more fbm
+    noisePos = vec3(fs_Pos.x * 1.25, fs_Pos.y * 1.25 - fs_Time * 0.033, fs_Pos.z * 1.25);
+    fbm = fbm3D(noisePos, 4, 3., 0.8);
+    bucketT = floor(clamp(fbm, 0., 1.) * u_ColorSteps) / (u_ColorSteps - 1.);
+    colLayer2 = mix(colLayer2, mix(u_Color.rgb, u_Color2.rgb, bucketT), 0.5);
 
-    
+    //darken base color at bottom
+    float darkenT = clamp(-fs_Pos.y - 0.1 - 0.4 * fbm, 0., 1.);
+    bucketT = floor(clamp(darkenT, 0., 1.) * 2. * u_ColorSteps) / (2. * u_ColorSteps - 1.);
+    colLayer1 = mix(colLayer1, vec3(0), bucketT);
 
-    out_Col = vec4(u_Color.rgb * diffuseTerm, u_Color.a);
+    //brighten base color at top
+    out_Col = vec4(mix(colLayer1, colLayer2, 0.55 - 0.3 * clamp(fs_Pos.y - 1., 0., 1.)), u_Color.a);
+
 }
 
 

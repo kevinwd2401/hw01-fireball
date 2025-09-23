@@ -10,13 +10,18 @@ import Camera from './Camera';
 import {setGL} from './globals';
 import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
 
+
+let savedGui: dat.GUI;
 // Define an object with application parameters and button callbacks
 // This will be referred to by dat.GUI's functions that add GUI elements.
 const controls = {
-  tesselations: 5,
-  'Load Scene': loadScene, // A function pointer, essentially
-  shaderColor: [255, 0, 0],
-  shaderColor2: [25, 114, 29]
+  tesselations: 6,
+  //'Load Scene': loadScene, // A function pointer, essentially
+  mainColor: [200, 0, 0],
+  secondaryColor: [220, 255, 40],
+  sharpness: 3.2,
+  colorSteps: 5.0,
+  'Reset Fireball': resetValues
 }
 let icosphere: Icosphere;
 // let square: Square;
@@ -33,6 +38,16 @@ function loadScene() {
   // cube.create();
 }
 
+function resetValues() {
+  
+  controls.tesselations = 6;
+  controls.mainColor = [200, 0, 0];
+  controls.secondaryColor = [220, 255, 40];
+  controls.sharpness = 3.2;
+  controls.colorSteps = 5.0;
+  savedGui.__controllers.forEach(c => c.updateDisplay());
+}
+
 function main() {
   // Initial display for framerate
   const stats = Stats();
@@ -45,9 +60,13 @@ function main() {
   // Add controls to the gui
   const gui = new DAT.GUI();
   gui.add(controls, 'tesselations', 0, 8).step(1);
-  gui.add(controls, 'Load Scene');
-  gui.addColor(controls, 'shaderColor');
-  gui.addColor(controls, 'shaderColor2');
+  //gui.add(controls, 'Load Scene');
+  gui.addColor(controls, 'mainColor');
+  gui.addColor(controls, 'secondaryColor');
+  gui.add(controls, 'sharpness', 2.0, 4.0).step(0.1);
+  gui.add(controls, 'colorSteps', 3.0, 8.0).step(1.0);
+  gui.add(controls, 'Reset Fireball');
+  savedGui = gui;
 
   // get canvas and webgl context
   const canvas = <HTMLCanvasElement> document.getElementById('canvas');
@@ -65,7 +84,7 @@ function main() {
   const camera = new Camera(vec3.fromValues(0, 0, 5), vec3.fromValues(0, 0, 0));
 
   const renderer = new OpenGLRenderer(canvas);
-  renderer.setClearColor(0.2, 0.2, 0.2, 1);
+  renderer.setClearColor(0., 0., 0.05, 1);
   gl.enable(gl.DEPTH_TEST);
 
   const custom = new ShaderProgram([
@@ -90,9 +109,9 @@ function main() {
       //cube,
       icosphere,
       //square,
-    ], vec4.fromValues(controls.shaderColor[0] / 255.0, controls.shaderColor[1]/ 255.0, controls.shaderColor[2]/ 255.0, 1),
-      vec4.fromValues(controls.shaderColor2[0] / 255.0, controls.shaderColor2[1]/ 255.0, controls.shaderColor2[2]/ 255.0, 1), 
-      currTime);
+    ], vec4.fromValues(controls.mainColor[0] / 255.0, controls.mainColor[1]/ 255.0, controls.mainColor[2]/ 255.0, 1),
+      vec4.fromValues(controls.secondaryColor[0] / 255.0, controls.secondaryColor[1]/ 255.0, controls.secondaryColor[2]/ 255.0, 1), 
+      currTime, controls.sharpness, controls.colorSteps);
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame

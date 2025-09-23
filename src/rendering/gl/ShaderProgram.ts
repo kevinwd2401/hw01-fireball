@@ -32,6 +32,9 @@ class ShaderProgram {
   unifColor2: WebGLUniformLocation;
   unifTime: WebGLUniformLocation;
 
+  unifLunaricity: WebGLUniformLocation;
+  unifColorSteps: WebGLUniformLocation;
+
   constructor(shaders: Array<Shader>) {
     this.prog = gl.createProgram();
 
@@ -52,6 +55,8 @@ class ShaderProgram {
     this.unifColor      = gl.getUniformLocation(this.prog, "u_Color");
     this.unifColor2      = gl.getUniformLocation(this.prog, "u_Color2");
     this.unifTime      = gl.getUniformLocation(this.prog, "u_Time");
+    this.unifLunaricity      = gl.getUniformLocation(this.prog, "u_Lunaricity");
+    this.unifColorSteps      = gl.getUniformLocation(this.prog, "u_ColorSteps");
   }
 
   use() {
@@ -89,6 +94,16 @@ class ShaderProgram {
     }
     if (this.unifColor2 !== -1) {
       gl.uniform4fv(this.unifColor2, color2);
+    }
+  }
+
+  setLunaricityAndBuckets(l: number, b: number) {
+    this.use();
+    if (this.unifLunaricity !== -1) {
+      gl.uniform1f(this.unifLunaricity, l);
+    }
+    if (this.unifColorSteps !== -1) {
+      gl.uniform1f(this.unifColorSteps, b);
     }
   }
 
