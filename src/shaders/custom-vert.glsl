@@ -35,6 +35,90 @@ out vec4 fs_Pos;
 const vec4 lightPos = vec4(5, 5, 3, 1); //The position of our virtual light, which is used to compute the shading of
                                         //the geometry in the fragment shader.
 
+float fade(float t) {
+    // quintic fade
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+vec3 rand3(vec3 p) {
+    vec3 q = vec3(
+        dot(p, vec3(127.1, 311.7,  74.7)),
+        dot(p, vec3(269.5, 183.3, 246.1)),
+        dot(p, vec3(113.5, 271.9, 124.6))
+    );
+    q = fract(sin(q) * 43758.5453123);
+    // [-1,1]
+    q = q * 2.0 - 1.0;
+    return normalize(q);
+}
+
+float perlin3D(vec3 P) {
+    vec3 Pi = floor(P);
+    vec3 Pf = P - Pi;
+    vec3 w = vec3(fade(Pf.x), fade(Pf.y), fade(Pf.z));
+
+    // corner offsets
+    vec3 c000 = vec3(0.0, 0.0, 0.0);
+    vec3 c100 = vec3(1.0, 0.0, 0.0);
+    vec3 c010 = vec3(0.0, 1.0, 0.0);
+    vec3 c110 = vec3(1.0, 1.0, 0.0);
+    vec3 c001 = vec3(0.0, 0.0, 1.0);
+    vec3 c101 = vec3(1.0, 0.0, 1.0);
+    vec3 c011 = vec3(0.0, 1.0, 1.0);
+    vec3 c111 = vec3(1.0, 1.0, 1.0);
+
+    // gradient vectors
+    float n000 = dot(rand3(Pi + c000), Pf - c000);
+    float n100 = dot(rand3(Pi + c100), Pf - c100);
+    float n010 = dot(rand3(Pi + c010), Pf - c010);
+    float n110 = dot(rand3(Pi + c110), Pf - c110);
+    float n001 = dot(rand3(Pi + c001), Pf - c001);
+    float n101 = dot(rand3(Pi + c101), Pf - c101);
+    float n011 = dot(rand3(Pi + c011), Pf - c011);
+    float n111 = dot(rand3(Pi + c111), Pf - c111);
+
+    float nx00 = mix(n000, n100, w.x);
+    float nx10 = mix(n010, n110, w.x);
+    float nx01 = mix(n001, n101, w.x);
+    float nx11 = mix(n011, n111, w.x);
+
+    float nxy0 = mix(nx00, nx10, w.y);
+    float nxy1 = mix(nx01, nx11, w.y);
+
+    float nxyz = mix(nxy0, nxy1, w.z);
+
+    return nxyz * 1.732;
+}
+
+float fbm3D(vec3 p, int OCTAVES, float LACUNARITY, float GAIN) {
+    float freq = 1.0;
+    float amp = 1.0;
+    float sum = 0.0;
+    float norm = 0.0;
+
+    for (int i = 0; i < OCTAVES; ++i) {
+        sum += perlin3D(p * freq) * amp;
+        norm += amp;
+        freq *= LACUNARITY;
+        amp *= GAIN;
+    }
+    // [-1,1]
+    return sum / norm;
+}
+
+
+float bias(float t, float b) {
+    return pow(t, log(b) / log(0.5));
+}
+
+float gain(float g, float t) {
+    if (t < 0.5) {
+        return bias(1. - g, 2. * t) / 2.;
+    } else {
+        return 1. - bias(1. - g, 2. - 2. * t) / 2.;
+    }
+}
+
 void main()
 {
     fs_Col = vs_Col;                         // Pass the vertex colors to the fragment shader for interpolation
@@ -46,10 +130,28 @@ void main()
                                                             // perpendicular to the surface after the surface is transformed by
                                                             // the model matrix.
 
-    vec3 offsetVector = vec3(cos(radians(float(u_Time))), sin(radians(float(u_Time))), 0); // vector that rotates around z axis
-    float dotOffset = abs(dot(offsetVector, vec3(vs_Pos))) * 0.2; // dot of position vector from offsetVector
-    float tanOffset = tan(radians(float(u_Time))) * 0.2;
-    vec3 newPos = (1.0 + dotOffset) * vec3(vs_Pos) + tanOffset * vec3(0, 0, -1);
+    // tail along positive y axis
+    vec3 newPos = vec3(vs_Pos);
+    float heightScaleFluct = 0.08 * sin(float(u_Time) * 0.134) - 0.1 * cos(float(u_Time) * 0.017 + 0.4);
+    newPos.y *= mix(1.0, 2. + heightScaleFluct, clamp(newPos.y, 0.0, 1.0)); 
+
+
+    // tail taper
+    float t = clamp(newPos.y - 0.3, 0.0, 1.0);
+    newPos.xz *= mix(1.0, 0.7, gain(0.66, t));
+
+    // x z oscillation
+    float amp = 0.016 + 0.03 * clamp(newPos.y - 1., 0.0, 1.0); 
+    newPos.x += amp * (sin(3. * newPos.y + float(u_Time) * 0.0234) + cos(4. * newPos.y + float(u_Time) * 0.019 - 11.));
+    newPos.x += amp * (sin(3. * newPos.y + float(u_Time) * 0.039 + 2.3) - cos( 4. * newPos.y - float(u_Time) * 0.087));
+
+    // FBM
+    float r = length(newPos);
+    vec3 noisePos = vec3(newPos.x * 0.5, newPos.y * 0.5 - float(u_Time) * 0.03, newPos.z * 0.5);
+    float fbm = fbm3D(noisePos, 4, 3., 0.5);
+    float fbmAmp = 0.3 * clamp(r * 2., 1.0, 2.0) * fbm;
+    newPos += fbmAmp * normalize(newPos);
+
     fs_Pos = vec4(newPos, 1);
     vec4 modelposition = u_Model * vec4(newPos, 1);  // Temporarily store the transformed vertex positions for use below
 

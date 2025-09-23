@@ -80,11 +80,28 @@ float fbm(vec3 p) {
     return total;
 }
 
+
+float hash11(float p)
+{
+    p = fract(p * .1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+float hash13(vec3 p3)
+{
+	p3  = fract(p3 * .1031);
+    p3 += dot(p3, p3.zyx + 31.32);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+
 void main()
 {
 
     // Calculate the diffuse term for Lambert shading
-    //float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));
+    float diffuseTerm = dot(normalize(fs_Nor), normalize(fs_LightVec));
     // Avoid negative lighting values
     // diffuseTerm = clamp(diffuseTerm, 0.0, 1.0);
 
@@ -96,7 +113,7 @@ void main()
 
     
 
-    out_Col = vec4(u_Color * diffuseTerm, u_Color.a);
+    out_Col = vec4(u_Color.rgb * diffuseTerm, u_Color.a);
 }
 
 
